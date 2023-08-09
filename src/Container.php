@@ -9,7 +9,7 @@
 
 namespace FastD\Container;
 
-
+use ArrayAccess;
 use Closure;
 use Iterator;
 use Psr\Container\ContainerInterface;
@@ -19,7 +19,7 @@ use Psr\Container\ContainerInterface;
  *
  * @package FastD\Container
  */
-class Container implements ContainerInterface, Iterator
+class Container implements ContainerInterface, ArrayAccess, Iterator
 {
     /**
      * @var array
@@ -34,144 +34,112 @@ class Container implements ContainerInterface, Iterator
     /**
      * 实例数组
      *
-     * @var array
+     * @var array<string, mixed>
      */
     protected array $instances = [];
 
     /**
-     * @param $name
-     * @param $service
-     * @param array
+     * @param string $id
+     * @param mixed $service
      * @return Container
      */
-    public function add(string $name, $service): Container
+    public function add(string $id, mixed $service): Container
     {
         if (!($service instanceof Closure)) {
             if (is_object($service)) {
-                $this->map[get_class($service)] = $name;
-                $this->instances[$name] = $service;
+                $this->map[get_class($service)] = $id;
+                $this->instances[$id] = $service;
             } elseif (is_string($service)) {
-                $this->map[$service] = $name;
+                $this->map[$service] = $id;
             }
         }
 
-        $this->services[$name] = $service;
+        $this->services[$id] = $service;
 
         return $this;
     }
 
     /**
-     * @param string $name
+     * @param string $id
      * @return bool
      */
-    public function has($name): bool
+    public function has(string $id): bool
     {
-        if (isset($this->map[$name])) {
-            $name = $this->map[$name];
+        if (isset($this->map[$id])) {
+            $id = $this->map[$id];
         }
 
-        return isset($this->services[$name]);
+        return isset($this->services[$id]);
     }
 
     /**
-     * @param string $name
-     * @return object
+     * @param string $id
+     * @return mixed
      */
-    public function get($name)
+    public function get(string $id): mixed
     {
-        $name = $this->map[$name] ?? $name;
+        $id = $this->map[$id] ?? $id;
 
-        if (!isset($this->services[$name])) {
-            throw new NotFoundException($name);
+        if (!isset($this->services[$id])) {
+            throw new NotFoundException($id);
         }
 
-        if (isset($this->instances[$name])) {
-            return $this->instances[$name];
+        if (isset($this->instances[$id])) {
+            return $this->instances[$id];
         }
 
-        $service  = $this->services[$name];
+        $service  = $this->services[$id];
 
         if (is_string($service)) {
             $service = new $service;
         }
 
-        $this->instances[$name] = $service;
+        $this->instances[$id] = $service;
 
         return $service;
     }
 
 
     /**
-     * @param ServiceProviderInterface $registrar
-     * @return void
+     * @param ServiceProviderInterface $provider
      */
-    public function register(ServiceProviderInterface $registrar): void
+    public function register(ServiceProviderInterface $provider): void
     {
-        $registrar->register($this);
+        $provider->register($this);
     }
 
     /**
-     * Whether a offset exists
-     *
-     * @link  http://php.net/manual/en/arrayaccess.offsetexists.php
-     * @param mixed $offset <p>
-     *                      An offset to check for.
-     *                      </p>
-     * @return boolean true on success or false on failure.
-     *                      </p>
-     *                      <p>
-     *                      The return value will be casted to boolean if non-boolean was returned.
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function offsetExists($offset): bool
+    public function offsetExists(mixed $offset): bool
     {
         return $this->has($offset);
     }
 
     /**
-     * Offset to retrieve
-     *
-     * @link  http://php.net/manual/en/arrayaccess.offsetget.php
-     * @param mixed $offset <p>
-     *                      The offset to retrieve.
-     *                      </p>
-     * @return mixed Can return all value types.
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function offsetGet($offset): object
+    public function offsetGet(mixed $offset): object
     {
         return $this->get($offset);
     }
 
     /**
-     * Offset to set
-     *
-     * @link  http://php.net/manual/en/arrayaccess.offsetset.php
-     * @param mixed $offset <p>
-     *                      The offset to assign the value to.
-     *                      </p>
-     * @param mixed $value  <p>
-     *                      The value to set.
-     *                      </p>
-     * @return void
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function offsetSet($offset, $value): void
+    public function offsetSet(mixed $offset, mixed $value): void
     {
         $this->add($offset, $value);
     }
 
     /**
-     * Offset to unset
-     *
-     * @link  http://php.net/manual/en/arrayaccess.offsetunset.php
-     * @param mixed $offset <p>
-     *                      The offset to unset.
-     *                      </p>
-     * @return void
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function offsetUnset($offset): void
+    public function offsetUnset(mixed $offset): void
     {
         if (isset($this->map[$offset])) {
             unset($this->map[$offset]);
@@ -183,20 +151,16 @@ class Container implements ContainerInterface, Iterator
     }
 
     /**
-     * Return the current element
-     * @link http://php.net/manual/en/iterator.current.php
-     * @return mixed Can return any type.
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function current(): object
+    public function current(): mixed
     {
-        return current($this->services);
+        return $this->get(key($this->services));
     }
 
     /**
-     * Move forward to next element
-     * @link http://php.net/manual/en/iterator.next.php
-     * @return void Any returned value is ignored.
+     * {@inheritDoc}
      * @since 5.0.0
      */
     public function next(): void
@@ -205,21 +169,16 @@ class Container implements ContainerInterface, Iterator
     }
 
     /**
-     * Return the key of the current element
-     * @link http://php.net/manual/en/iterator.key.php
-     * @return mixed scalar on success, or null on failure.
+     * {@inheritDoc}
      * @since 5.0.0
      */
-    public function key(): string
+    public function key(): mixed
     {
         return key($this->services);
     }
 
     /**
-     * Checks if current position is valid
-     * @link http://php.net/manual/en/iterator.valid.php
-     * @return boolean The return value will be casted to boolean and then evaluated.
-     * Returns true on success or false on failure.
+     * {@inheritDoc}
      * @since 5.0.0
      */
     public function valid(): bool
@@ -228,9 +187,7 @@ class Container implements ContainerInterface, Iterator
     }
 
     /**
-     * Rewind the Iterator to the first element
-     * @link http://php.net/manual/en/iterator.rewind.php
-     * @return void Any returned value is ignored.
+     * {@inheritDoc}
      * @since 5.0.0
      */
     public function rewind(): void
