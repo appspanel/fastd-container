@@ -22,33 +22,32 @@ use Psr\Container\ContainerInterface;
 class Container implements ContainerInterface, ArrayAccess, Iterator
 {
     /**
-     * @var array
+     * @var array<string,mixed>
      */
     protected array $services = [];
 
     /**
-     * @var array
+     * @var array<string,string>
      */
     protected array $map = [];
 
     /**
-     * 实例数组
-     *
-     * @var array<string, mixed>
+     * @var array<string, \FastD\Container\InjectionInterface>
      */
-    protected array $instances = [];
+    protected array $injections = [];
 
     /**
-     * @param string $id
-     * @param mixed $service
-     * @return Container
+     * Adds a service.
+     *
+     * @param string $id The service's id.
+     * @param mixed $service The service or its definition.
+     * @return \FastD\Container\Container This container.
      */
-    public function add(string $id, mixed $service): Container
+    public function add(string $id, mixed $service): static
     {
         if (!($service instanceof Closure)) {
             if (is_object($service)) {
                 $this->map[get_class($service)] = $id;
-                $this->instances[$id] = $service;
             } elseif (is_string($service)) {
                 $this->map[$service] = $id;
             }
@@ -60,8 +59,41 @@ class Container implements ContainerInterface, ArrayAccess, Iterator
     }
 
     /**
-     * @param string $id
-     * @return bool
+     * Gets a service.
+     *
+     * @param string $id The service's id.
+     * @return mixed The service.
+     */
+    public function get(string $id): mixed
+    {
+        $id = $this->map[$id] ?? $id;
+
+        if (!isset($this->services[$id])) {
+            throw new NotFoundException($id);
+        }
+
+        $service = $this->services[$id];
+
+        if (is_object($service)) {
+            // magic invoke class
+            if (method_exists($service, 'bindTo') && is_callable($service)) {
+                return $service($this);
+            }
+
+            // anonymous function
+            if (is_callable($service)) {
+                return $service;
+            }
+        }
+
+        return $service;
+    }
+
+    /**
+     * Tests whether a service exists.
+     *
+     * @param string $id The service's id.
+     * @return bool `true` if it does, `false` otherwise.
      */
     public function has(string $id): bool
     {
@@ -73,39 +105,37 @@ class Container implements ContainerInterface, ArrayAccess, Iterator
     }
 
     /**
-     * @param string $id
+     * @param string $id The service's id.
+     * @param array $arguments
      * @return mixed
+     * @throws NotFoundException
      */
-    public function get(string $id): mixed
+    public function make(string $id, array $arguments = []): mixed
     {
-        $id = $this->map[$id] ?? $id;
-
-        if (!isset($this->services[$id])) {
+        if (!$this->has($id)) {
             throw new NotFoundException($id);
         }
 
-        if (isset($this->instances[$id])) {
-            return $this->instances[$id];
+        if (!isset($this->injections[$id])) {
+            $service = $this->get($id);
+
+            $this->injections[$id] = (new Injection($service))->withContainer($this);
         }
 
-        $service  = $this->services[$id];
-
-        if (is_string($service)) {
-            $service = new $service;
-        }
-
-        $this->instances[$id] = $service;
-
-        return $service;
+        return $this->injections[$id]->make($arguments);
     }
 
-
     /**
-     * @param ServiceProviderInterface $provider
+     * Registers a service provider.
+     *
+     * @param ServiceProviderInterface $serviceProvider The service provider.
+     * @return \FastD\Container\Container This container.
      */
-    public function register(ServiceProviderInterface $provider): void
+    public function register(ServiceProviderInterface $serviceProvider): static
     {
-        $provider->register($this);
+        $serviceProvider->register($this);
+
+        return $this;
     }
 
     /**
@@ -121,7 +151,7 @@ class Container implements ContainerInterface, ArrayAccess, Iterator
      * {@inheritDoc}
      * @since 5.0.0
      */
-    public function offsetGet(mixed $offset): object
+    public function offsetGet(mixed $offset): mixed
     {
         return $this->get($offset);
     }
@@ -172,7 +202,7 @@ class Container implements ContainerInterface, ArrayAccess, Iterator
      * {@inheritDoc}
      * @since 5.0.0
      */
-    public function key(): mixed
+    public function key(): string|int|null
     {
         return key($this->services);
     }

@@ -1,4 +1,8 @@
 <?php
+
+namespace FastD\Container\Tests;
+
+
 /**
  * Created by PhpStorm.
  * User: janhuang
@@ -11,10 +15,13 @@
  * Gmail: bboyjanhuang@gmail.com
  */
 
+use DateTime;
+use DateTimeZone;
 use FastD\Container\Container;
 use FastD\Container\NotFoundException;
-use FastD\Container\ServiceProviderInterface;
+use FastD\Container\Tests\Services\TestServiceProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 class ContainerTest extends TestCase
 {
@@ -28,202 +35,141 @@ class ContainerTest extends TestCase
         $this->container = new Container();
     }
 
-    // == add()
-    // == get()
-    public function testAddAndGetClass(): void
+    public function testContainerClassString(): void
     {
-        $this->container->add('class', Container::class);
+        $this->container->add('timezone', DateTimeZone::class);
 
-        $this->assertInstanceOf(Container::class, $this->container->get('class'));
+        $this->assertTrue($this->container->has('timezone'));
+        $this->assertEquals(DateTimeZone::class, $this->container->get('timezone'));
     }
 
-    public function testAddAndGetObject(): void
+    public function testContainerClassHashStatus(): void
     {
-        $this->container->add('object', new Container());
+        $this->container->add('timezone', DateTimeZone::class);
 
-        $this->assertInstanceOf(Container::class, $this->container->get('object'));
+        $this->assertTrue($this->container->has('timezone'));
+        $this->assertTrue($this->container->has(DateTimeZone::class));
     }
 
-    public function testAddAndGetClosure(): void
+    public function testContainerMakeClassString(): void
     {
-        $this->container->add('closure', function()
-        {
-            return 'OK';
-        });
-        /** @var \Closure $closure */
-        $closure = $this->container->get('closure');
-        echo $closure();
+        $this->container->add('timezone', DateTimeZone::class);
+        $timezone = $this->container->make('timezone', ['PRC']);
 
-        $this->expectOutputString('OK');
+        $this->assertInstanceOf(DateTimeZone::class, $timezone);
+        $this->assertEquals('PRC', $timezone->getName());
     }
 
-    // == add()
-    // == has()
-    public function testHasClass(): void
+    public function testContainerClosure(): void
     {
-        $this->container->add('class', Container::class);
-
-        $this->assertTrue($this->container->has('class'));
-    }
-
-    public function testHasObject(): void
-    {
-        $this->container->add('object', new Container());
-
-        $this->assertTrue($this->container->has('object'));
-    }
-
-    public function testHasClosure(): void
-    {
-        $this->container->add('closure', function()
-        {
-            return 'OK';
+        $this->container->add('timezone', static function (): DateTimeZone {
+            return new DateTimeZone('UTC');
         });
 
-        $this->assertTrue($this->container->has('closure'));
-    }
-
-    // == register()
-    public function testRegister(): void
-    {
-        $this->container->register(new class implements ServiceProviderInterface
-        {
-            public function register(Container $container): void
-            {
-                $container->add('class', Container::class);
-                $container->add('object', new Container());
-                $container->add('closure', function()
-                {
-                    return 'OK';
-                });
-            }
+        $this->container->add('date', function (): DateTime {
+            return new DateTime('now', $this->container->get('timezone'));
         });
 
-        $this->assertInstanceOf(Container::class, $this->container->get('class'));
-        $this->assertInstanceOf(Container::class, $this->container->get('object'));
-
-        $closure = $this->container->get('closure');
-        echo $closure();
-
-        $this->expectOutputString('OK');
+        $this->assertEquals(new DateTimeZone('UTC'), $this->container->get('timezone'));
+        $this->assertInstanceOf(DateTimeZone::class, $this->container->get('timezone'));
+        $this->assertEquals('UTC', $this->container->get('date')->getTimeZone()->getName());
     }
 
-    // == offsetExists()
-    public function testOffsetExistsClass(): void
+    public function testContainerObject(): void
     {
-        $this->container->add('class', Container::class);
+        $this->container->add('timezone', new DateTimeZone('PRC'));
 
-        $this->assertTrue(isset($this->container['class']));
+        $this->assertTrue($this->container->has('timezone'));
+        $this->assertInstanceOf(DateTimeZone::class, $this->container->get('timezone'));
+        $this->assertEquals('PRC', $this->container->get('timezone')->getName());
+    }
+
+    public function testContainerRegister(): void
+    {
+        $this->container->register(new TestServiceProvider());
+
+        $this->assertTrue($this->container->has('timezone'));
+        $this->assertInstanceOf(DateTimeZone::class, $this->container->get('timezone'));
+    }
+
+    public function testOffsetExistsClassString(): void
+    {
+        $this->container->add('timezone', DateTimeZone::class);
+
+        $this->assertTrue(isset($this->container['timezone']));
     }
 
     public function testOffsetExistsObject(): void
     {
-        $this->container->add('object', new Container());
+        $this->container->add('timezone', new DateTimeZone('PRC'));
 
-        $this->assertTrue(isset($this->container['object']));
+        $this->assertTrue(isset($this->container['timezone']));
     }
 
-    public function testOffsetExistsClosure(): void
+    public function testOffsetSetAndGetGetClassString(): void
     {
-        $this->container->add('closure', function()
-        {
-            return 'OK';
-        });
+        $this->container['timezone'] = DateTimeZone::class;
+        $timeZone = $this->container['timezone'];
 
-        $this->assertTrue(isset($this->container['closure']));
-    }
-
-    // == offsetSet()
-    // == offsetGet()
-    public function testOffsetSetAndGetGetClass(): void
-    {
-        $this->container['class'] = Container::class;
-        $container = $this->container['class'];
-
-        $this->assertInstanceOf(Container::class, $container);
+        $this->assertEquals(DateTimeZone::class, $timeZone);
     }
 
     public function testOffsetSetAndGetGetObject(): void
     {
-        $this->container['object'] = new Container();
-        $container = $this->container['object'];
+        $this->container['timezone'] = new DateTimeZone('PRC');
+        $timezone = $this->container['timezone'];
 
-        $this->assertInstanceOf(Container::class, $container);
+        $this->assertInstanceOf(DateTimeZone::class, $timezone);
+        $this->assertEquals('PRC', $timezone->getName());
     }
 
-    public function testOffsetSetAndGetGetClosure(): void
+    public function testOffsetSetAndUnsetClassString(): void
     {
-        $this->container['closure'] = function()
-        {
-            return 'OK';
-        };
-        $closure = $this->container['closure'];
-        echo $closure();
+        $this->container['timezone'] = DateTimeZone::class;
+        unset($this->container['timezone']);
 
-        $this->expectOutputString('OK');
-    }
-
-    // == offsetSet()
-    // == offsetUnset()
-    public function testOffsetSetAndUnsetClass(): void
-    {
-        $this->container['class'] = Container::class;
-        unset($this->container['class']);
-
-        $this->assertNotTrue(isset($this->container['class']));
+        $this->assertNotTrue(isset($this->container['timezone']));
 
         $this->expectException(NotFoundException::class);
-        $c = $this->container['class'];
-        $c = $this->container->get('class');
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $c = $this->container['timezone'];
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $c = $this->container->get('timezone');
     }
 
     public function testOffsetSetAndUnsetObject(): void
     {
-        $this->container['object'] = new Container();
-        unset($this->container['object']);
+        $this->container['timezone'] = new DateTimeZone('PRC');
+        unset($this->container['timezone']);
 
-        $this->assertNotTrue(isset($this->container['object']));
-
-        $this->expectException(NotFoundException::class);
-        $c = $this->container['object'];
-        $c = $this->container->get('object');
-    }
-
-    public function testOffsetSetAndUnsetClosure(): void
-    {
-        $this->container['closure'] = function()
-        {
-            return 'OK';
-        };
-        unset($this->container['closure']);
-
-        $this->assertNotTrue(isset($this->container['closure']));
+        $this->assertNotTrue(isset($this->container['timezone']));
 
         $this->expectException(NotFoundException::class);
-        $c = $this->container['closure'];
-        $c = $this->container->get('closure');
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $c = $this->container['timezone'];
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $c = $this->container->get('timezone');
     }
 
-    // == \Iterator
     public function testIterator(): void
     {
-        $this->container->add('class', Container::class);
-        $this->container->add('object', new Container());
-        $this->container->add('closure', function()
-        {
+        $this->container->add('class', DateTimeZone::class);
+        $this->container->add('object', new DateTimeZone('PRC'));
+        $this->container->add('closure', static function(): string {
             return 'OK';
         });
 
         foreach($this->container as $key => $service) {
             $this->assertIsString($key);
 
-            if('class' === $key || 'object' === $key) {
-                $this->assertInstanceOf(Container::class, $service, $key.' is not a '.Container::class.'.');
+            if('class' === $key) {
+                $this->assertEquals(DateTimeZone::class, $service, $key.' is not a '.DateTimeZone::class.'.');
+            }
+            elseif('object' === $key) {
+                $this->assertInstanceOf(DateTimeZone::class, $service);
             }
             elseif('closure' === $key) {
-                echo $service();
-
-                $this->expectOutputString('OK');
+                $this->assertEquals('OK', $service);
             }
             else {
                 throw new RuntimeException('Unrecognized element.');
